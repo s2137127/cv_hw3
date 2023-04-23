@@ -73,7 +73,7 @@ def panorama(imgs):
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
         matches = bf.match(f1, f2)
-        matches = sorted(matches, key=lambda x: x.distance)[:40]
+        matches = sorted(matches, key=lambda x: x.distance)[:300]
         pic = cv2.drawMatches(im1, kp1, im2, kp2, matches,None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
         cv2.imshow('ss', cv2.resize(pic,(800,800)))
         cv2.waitKey()
@@ -91,12 +91,12 @@ def panorama(imgs):
         kp = kp1[idx]
 
         # print(last_best_H)
-        out = warping(im2,dst, last_best_H, np.min(kp[:,0]),im2.shape[0],np.min(kp[:,1]),w_max,
+        dst = warping(im2,dst, last_best_H, 0,h_max,0,w_max,
                       direction='b')
-        cv2.imshow('ss', cv2.resize(out, (800, 800)))
+        cv2.imshow('ss', cv2.resize(dst, (800, 800)))
         cv2.waitKey()
         w += im2.shape[1]
-    return out
+    return dst
 
 
 if __name__ == "__main__":

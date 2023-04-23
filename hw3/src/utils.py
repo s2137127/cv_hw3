@@ -100,17 +100,18 @@ def warping(src, dst, H, ymin, ymax, xmin, xmax, direction='b'):
         valid2 = np.logical_and(0 < v[:, :, 1], v[:, :, 1] < h_src)
         valid = np.logical_and(valid1, valid2)
 
-        # v[np.where( v<0)] = 0
-        # v[:,:,0][np.where( v[:, :, 0] >= w_src)] = w_src-1
-        # # print(v[np.where(v[:, :, 0] >= w_src)][..., 0])
-        # v[:,:,1][np.where( v[:, :, 1] >= h_src)] = h_src - 1
         # TODO: 6. assign to destination image with proper masking
         # print(w_src)
-        v = np.multiply(np.tile(valid, 2).reshape(v.shape), v)
+        # v = np.multiply(np.tile(valid, 2).reshape(v.shape), v)
+        # print(v.shape)
+        v = v[valid]
         # src = np.multiply(np.tile(valid, 3).reshape(src.shape), src)
         # print(src[v[...,1],v[...,0]])
-        # print(v.any())
-        dst[ymin:ymin+v.shape[0],xmin:xmin+v.shape[1]] = src[v[...,1],v[...,0]]
+        # print(v.shape)
+        # print(np.tile(valid,2).reshape(v.shape))
+        # print(v.reshape(valid.shape))
+        # print(dst[ymin:ymax,xmin:xmax][valid].shape)
+        dst[ymin:ymax,xmin:xmax][valid] = src[v[...,1],v[...,0]]
         # for i in range(v.shape[0]):
         #     for j in range(v.shape[1]):
         #         if valid[i, j]:
