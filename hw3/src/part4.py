@@ -4,24 +4,20 @@ import random
 from tqdm import tqdm
 from utils import solve_homography, warping
 
-
 np.random.seed(999)
 
 
-def Ransac(kp1, kp2, matches, n=4, th=500):
-
+def Ransac(kp1, kp2, matches, n=4, th=1500):
     matches = np.array([[matches[i].queryIdx, matches[i].trainIdx] for i in range(len(matches))])
     print('matches', matches.shape)
     p = 0.5
     P = 0.999
     k = np.ceil(np.log(1 - P) / np.log(1 - p ** n)).astype(int)
-    H_arr, inlinear,inlinear_arr = [], [],[]
+    H_arr, inlinear = [], []
     for t in range(k):
-        idx = np.random.randint(low=0, high=matches.shape[0], size=n,)
+        idx = np.random.randint(low=0, high=matches.shape[0], size=n, )
         id1, id2 = matches[idx, 0], matches[idx, 1]
-        # for i in range(matches.shape[0]):
-        #     a = kp1[matches[i, 0]]
-        #     print(a)
+
         p1, p2 = np.array([list(kp1[matches[i, 0]]) + [1] for i in range(matches.shape[0]) if i not in idx]), \
                  np.array([list(kp2[matches[i, 1]]) + [1] for i in range(matches.shape[0]) if i not in idx])
         # print(p1)
@@ -33,12 +29,35 @@ def Ransac(kp1, kp2, matches, n=4, th=500):
         # print(err.shape)
         err = np.sqrt(np.square(err[0, :]) + np.square(err[1, :]))
         # print(np.where(err < th))
-        inlinear_arr.append(np.where(err < th))
+        # print(err)
         inlinear.append(np.where(err < th)[0].shape[0])
         H_arr.append(H)
     idx = np.argmax(inlinear)
-    print(H_arr[idx])
-    return H_arr[idx],inlinear_arr[idx][0]
+    # print(inlinear)
+    # print(H_arr[idx])
+    return H_arr[idx]
+
+
+def linearBlending(imgs,overlap_mask):
+
+    dst,img_left, img_right = imgs
+    (hl, wl) = dst.shape[:2]
+    dst = dst.astype(float)
+    img_right = img_right.astype(float)
+    alpha_mask = np.ones((hl, wl),dtype=float)
+    for i in range(overlap_mask.shape[0]):
+        overlap = np.where(overlap_mask[i,:] == 1)
+        if len(overlap[0]) == 0:
+            continue
+        idx_min = np.min(overlap)
+        idx_max = np.max(overlap)
+        alp = np.linspace(1,0,num = idx_max-idx_min)
+        alpha_mask[i,idx_min:idx_max] = alp
+    linearBlending_img = np.copy(dst)
+    alpha_mask = np.tile(alpha_mask,3).reshape((hl, wl,3))
+
+    linearBlending_img[overlap_mask] = (alpha_mask * img_left + (np.ones_like(alpha_mask) - alpha_mask) * img_right)[overlap_mask]
+    return linearBlending_img.astype(np.uint8)
 
 
 def panorama(imgs):
@@ -54,10 +73,9 @@ def panorama(imgs):
     dst = np.zeros((h_max, w_max, imgs[0].shape[2]), dtype=np.uint8)
     dst[:imgs[0].shape[0], :imgs[0].shape[1]] = imgs[0]
     last_best_H = np.eye(3)
-    out = None
+    out = np.zeros((h_max, w_max, imgs[0].shape[2]), dtype=np.uint8)
     orb = cv2.ORB_create(nfeatures=4000)
     # for all images to be stitched:
-    w = imgs[0].shape[1]
     for idx in tqdm(range(len(imgs) - 1)):
         im1 = imgs[idx]
         im2 = imgs[idx + 1]
@@ -68,34 +86,36 @@ def panorama(imgs):
         kp1, f1 = orb.detectAndCompute(im1_g, None)
         kp2, f2 = orb.detectAndCompute(im2_g, None)
 
-
         # print(kp2.shape)
         bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
-        matches = bf.match(f1, f2)
-        matches = sorted(matches, key=lambda x: x.distance)[:300]
-        pic = cv2.drawMatches(im1, kp1, im2, kp2, matches,None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
-        cv2.imshow('ss', cv2.resize(pic,(800,800)))
-        cv2.waitKey()
+        matches = bf.match(f2, f1)
+
+        # matches = sorted(matches, key=lambda x: x.distance)[:100]
+        # print(len(matches))
+        # pic = cv2.drawMatches(im2, kp2, im1, kp1, matches,None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+        # cv2.imshow('ss', cv2.resize(pic,(800,800)))
+        # cv2.waitKey()
         kp1 = np.array([i.pt for i in kp1]).astype(int)
         kp2 = np.array([i.pt for i in kp2]).astype(int)
         # TODO: 2. apply RANSAC to choose best H
-        H,inlinear = Ransac(kp2, kp1, matches)
-        # print(inlinear)
-        m = np.array(matches)[inlinear]
-        idx = [i.queryIdx for i in m]
-        # print(idx)
-        # TODO: 3. chain the homographies
-        last_best_H = np.dot(last_best_H , H)
-        # TODO: 4. apply warping
-        kp = kp1[idx]
+        H = Ransac(kp2, kp1, matches)
 
-        # print(last_best_H)
-        dst = warping(im2,dst, last_best_H, 0,h_max,0,w_max,
+        # TODO: 3. chain the homographies
+        last_best_H = np.dot(last_best_H, H)
+        # TODO: 4. apply warping
+        # tmp = dst.copy()
+        left_img = dst.copy()
+        dst,mask = warping(im2, dst, last_best_H, 0, h_max, 0, w_max,
                       direction='b')
-        cv2.imshow('ss', cv2.resize(dst, (800, 800)))
-        cv2.waitKey()
-        w += im2.shape[1]
+        right_img, _ = warping(im2, out, last_best_H, 0, h_max, 0, w_max,
+                            direction='b')
+        # cv2.imshow('.da' ,dst)
+        # cv2.waitKey()
+        dst = linearBlending([dst,left_img,right_img],mask)
+
+        # cv2.imwrite('./db_%d.png' %idx, dst)
+        # cv2.waitKey()
     return dst
 
 

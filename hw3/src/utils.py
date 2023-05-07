@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 
@@ -39,11 +40,10 @@ def solve_homography(u, v):
     else:
         H = np.dot(np.linalg.pinv(A), b)
     H = np.append(H,1).reshape(3,3)
-    # print(H)
     return H
 
 
-def warping(src, dst, H, ymin, ymax, xmin, xmax, direction='b'):
+def warping(src, dst, H, ymin, ymax, xmin, xmax, direction='b',use_mask = True):
     """
     Perform forward/backward warpping without for loops. i.e.
     for all pixels in src(xmin~xmax, ymin~ymax),  warp to destination
@@ -75,7 +75,7 @@ def warping(src, dst, H, ymin, ymax, xmin, xmax, direction='b'):
     :param direction: indicates backward warping or forward warping
     :return: destination output image
     """
-
+    mask = None
     h_src, w_src, ch = src.shape
     h_dst, w_dst, ch = dst.shape
     H_inv = np.linalg.inv(H)
@@ -87,12 +87,12 @@ def warping(src, dst, H, ymin, ymax, xmin, xmax, direction='b'):
     # TODO: 2.reshape the destination pixels as N x 3 homogeneous coordinate
 
     if direction == 'b':
+
         # TODO: 3.apply H_inv to the destination pixels and retrieve (u,v) pixels, then reshape to (ymax-ymin),(xmax-xmin)
         v = np.dot(H_inv, mesh).T
         v = np.divide(v[:, :2], np.tile(v[:, 2], (2, 1)).T)
         v = v.reshape((ymax - ymin), (xmax - xmin), -1)
         v = np.round(v).astype(int)
-        # print(v.shape)
         # TODO: 4.calculate the mask of the transformed coordinate (should not exceed the boundaries of source image)
 
         # TODO: 5.sample the source image with the masked and reshaped transformed coordinates
@@ -101,33 +101,25 @@ def warping(src, dst, H, ymin, ymax, xmin, xmax, direction='b'):
         valid = np.logical_and(valid1, valid2)
 
         # TODO: 6. assign to destination image with proper masking
-        # print(w_src)
-        # v = np.multiply(np.tile(valid, 2).reshape(v.shape), v)
-        # print(v.shape)
+
         v = v[valid]
-        # src = np.multiply(np.tile(valid, 3).reshape(src.shape), src)
-        # print(src[v[...,1],v[...,0]])
-        # print(v.shape)
-        # print(np.tile(valid,2).reshape(v.shape))
-        # print(v.reshape(valid.shape))
-        # print(dst[ymin:ymax,xmin:xmax][valid].shape)
-        dst[ymin:ymax,xmin:xmax][valid] = src[v[...,1],v[...,0]]
-        # for i in range(v.shape[0]):
-        #     for j in range(v.shape[1]):
-        #         if valid[i, j]:
-        #             dst[i+ymin,j+xmin] = src[v[i,j,1],v[i,j,0]]
+        if use_mask == True:
+            mask1 = np.zeros(dst.shape[:2])
+            mask2 = cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
+            mask1[ymin:ymax, xmin:xmax][valid] = 1
+            mask = np.logical_and(mask1, mask2).reshape(mask1.shape)
+        dst[ymin:ymax, xmin:xmax][valid] = src[v[..., 1], v[..., 0]]
+
+
+        return dst, mask
     elif direction == 'f':
         # TODO: 3.apply H to the source pixels and retrieve (u,v) pixels, then reshape to (ymax-ymin),(xmax-xmin)
         v = np.dot(H,mesh).T
-        # print(np.tile(v[:,2],(2,1)))
         v = np.divide(v[:,:2],np.tile(v[:,2],(2,1)).T)
         v = v.reshape((ymax-ymin),(xmax-xmin),-1)
         v= np.round(v).astype(int)
         # TODO: 4.calculate the mask of the transformed coordinate (should not exceed the boundaries of destination image)
-        # mask_xu = np.ones(v.shape[:2])*xmax
-        # mask_xl = np.ones(v.shape[:2]) * xmin
-        # mask_yu = np.ones(v.shape[:2])*ymax
-        # mask_yl = np.ones(v.shape[:2]) * ymin
+
 
         # TODO: 5.filter the valid coordinates using previous obtained mask
         valid1 = np.logical_and(0 < v[:, :, 0] , v[:, :, 0]<w_dst)

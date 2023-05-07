@@ -40,7 +40,7 @@ def planarAR(REF_IMAGE_PATH, VIDEO_PATH):
             H = solve_homography(ref_corns, corners)
             # TODO: 3.apply backward warp
             # function call to warping()
-            frame = warping(ref_image, frame, H, np.min(corners[:, 1]), np.max(corners[:, 1]), np.min(corners[:, 0]), np.max(corners[:, 0]), direction='b')
+            frame,_ = warping(ref_image, frame, H, np.min(corners[:, 1]), np.max(corners[:, 1]), np.min(corners[:, 0]), np.max(corners[:, 0]), direction='b',mask = False)
             videowriter.write(frame)
             pbar.update(1)
 
